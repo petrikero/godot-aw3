@@ -1851,21 +1851,28 @@ void RendererSceneRenderRD::init() {
 	bool can_use_storage = _render_buffers_can_be_storage();
 	bool can_use_vrs = is_vrs_supported();
 	BitField<RendererRD::CopyEffects::RasterEffects> raster_effects = {};
+
+	// This path can be used to redirect certain devices to use the raster version of the effect, either due to performance, lack of capabilities, or driver errors.
+	bool use_raster_for_octmaps = false;
+
 	if (!can_use_storage) {
 		raster_effects.set_flag(RendererRD::CopyEffects::RASTER_EFFECT_COPY);
 		raster_effects.set_flag(RendererRD::CopyEffects::RASTER_EFFECT_GAUSSIAN_BLUR);
-
-		// This path can be used to redirect certain devices to use the raster version of the effect, either due to performance, lack of capabilities, or driver errors.
-		bool use_raster_for_octmaps = false;
 
 		// Some devices may not support the A2B10G10R10 format as a storage image on the Mobile renderer.
 		if (!RD::get_singleton()->texture_is_format_supported_for_usage(_render_buffers_get_preferred_color_format(), RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT)) {
 			use_raster_for_octmaps = true;
 		}
+	}
 
-		if (use_raster_for_octmaps) {
-			raster_effects.set_flag(RendererRD::CopyEffects::RASTER_EFFECT_OCTMAP);
-		}
+	// The compute octmap filter (octmap_filter.glsl) binds six storage images in one stage.
+	// WebGPU and Vulkan only guarantee four, and some devices report exactly that.
+	if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_STORAGE_IMAGES_PER_SHADER_STAGE) < 6) {
+		use_raster_for_octmaps = true;
+	}
+
+	if (use_raster_for_octmaps) {
+		raster_effects.set_flag(RendererRD::CopyEffects::RASTER_EFFECT_OCTMAP);
 	}
 
 	bokeh_dof = memnew(RendererRD::BokehDOF(!can_use_storage));
