@@ -65,6 +65,11 @@ def get_opts():
             False,
         ),
         BoolVariable("wasm_simd", "Use WebAssembly SIMD to improve CPU performance", True),
+        BoolVariable(
+            "wasm_relaxed_simd",
+            "Also use WebAssembly relaxed SIMD (requires wasm_simd). Safari does not support it",
+            False,
+        ),
         EnumVariable(
             "malloc",
             "Memory allocator. dlmalloc serializes all threads on one lock; mimalloc has per-thread heaps",
@@ -377,10 +382,13 @@ def configure(env: "SConsEnvironment"):
             env.Append(LINKFLAGS=["-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$$GL"])
 
     # Enable WebAssembly SIMD. Relaxed SIMD on top lets vectorized float math
-    # emit fused relaxed_madd & co — every browser that has WebGPU (which the
-    # game requires anyway) supports it.
+    # emit fused relaxed_madd & co, but it is opt-in: Safari (and so every
+    # browser on iOS) has WebGPU but no relaxed SIMD, and rejects the whole
+    # module if it contains a single relaxed SIMD instruction.
     if env["wasm_simd"]:
-        env.Append(CCFLAGS=["-msimd128", "-mrelaxed-simd"])
+        env.Append(CCFLAGS=["-msimd128"])
+        if env["wasm_relaxed_simd"]:
+            env.Append(CCFLAGS=["-mrelaxed-simd"])
 
     # Reduce code size by generating less support code (e.g. skip NodeJS support).
     env.Append(LINKFLAGS=["-sENVIRONMENT=web,worker"])
